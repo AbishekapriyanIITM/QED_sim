@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feynman's Mirror: QED Reflection Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f8ff;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            background-color: white;
+            border: 1px solid #ccc;
+            margin: 20px 0;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .explanation {
+            max-width: 600px;
+            margin: 20px auto;
+            text-align: left;
+            padding: 15px;
+            background-color: #e6f7ff;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Feynman's QED Mirror Simulator</h1>
+        <p>How light reflects off a mirror using spinning arrows (probability amplitudes)</p>
+        
+        <canvas id="mirrorCanvas" width="600" height="500"></canvas>
+        
+        <button id="spinButton">Start Sequential Rotation</button>
+        <button id="resetButton">Reset</button>
+        
+        <div class="explanation">
+            <h3>How It Works:</h3>
+            <p>
+                - <strong>Red dot</strong>: Light source. <strong>Blue dot</strong>: Detector.<br>
+                - <strong>Gray lines</strong>: Possible paths light could take.<br>
+                - <strong>Spinning arrows</strong>: Each path has a rotating phasor (probability amplitude).<br>
+                - Click <strong>"Start Sequential Rotation"</strong> to see arrows rotate one by one and add tip-to-tail.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mirrorCanvas');
+        const ctx = canvas.getContext('2d');
+        const spinButton = document.getElementById('spinButton');
+        const resetButton = document.getElementById('resetButton');
+
+        // Mirror position and properties
+        const mirrorY = canvas.height / 2 - 50;
+        const mirrorWidth = 400;
+        const mirrorX1 = (canvas.width - mirrorWidth) / 2;
+        const mirrorX2 = mirrorX1 + mirrorWidth;
+
+        // Light source (A) and detector (B)
+        const source = { x: 100, y: 100 };
+        const detector = { x: 500, y: 100 };
+
+        // Simulate multiple reflection points on the mirror
+        const reflectionPoints = [];
+        for (let i = 0; i < 15; i++) {
+            reflectionPoints.push(mirrorX1 + (i * mirrorWidth / 14));
+        }
+
+        // Arrow properties
+        let arrows = [];
+        let isSpinning = false;
+        let animationId = null;
+        let currentArrowIndex = 0;
+        let resultantVectors = [];
+        let tipToTailVectors = [];
+        const resultantStartX = canvas.width / 2 - 100;
+        const resultantStartY = mirrorY + 200;
+
+        function drawMirror() {
+            ctx.beginPath();
+            ctx.moveTo(mirrorX1, mirrorY);
+            ctx.lineTo(mirrorX2, mirrorY);
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function drawSourceAndDetector() {
+            // Draw light source (A)
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.arc(source.x, source.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillText('Source (A)', source.x - 30, source.y - 15);
+
+            // Draw detector (B)
+            ctx.fillStyle = 'blue';
+            ctx.beginPath();
+            ctx.arc(detector.x, detector.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillText('Detector (B)', detector.x + 20, detector.y - 15);
+        }
+
+        function drawPaths() {
+            ctx.strokeStyle = 'rgba(150, 150, 150, 0.5)';
+            ctx.lineWidth = 1;
+            reflectionPoints.forEach(x => {
+                ctx.beginPath();
+                ctx.moveTo(source.x, source.y);
+                ctx.lineTo(x, mirrorY);
+                ctx.lineTo(detector.x, detector.y);
+                ctx.stroke();
+            });
+        }
+
+        function initializeArrows() {
+            arrows = reflectionPoints.map((x, index) => {
+                const pathLength = 
+                    Math.sqrt((x - source.x) ** 2 + (mirrorY - source.y) ** 2) +
+                    Math.sqrt((detector.x - x) ** 2 + (mirrorY - detector.y) ** 2);
+                return {
+                    x: x,
+                    rotationSpeed: pathLength * 0.002, // Slowed down rotation speed
+                    angle: 0,
+                    magnitude: 20,
+                    isRotating: false,
+                    isDone: false,
+                    color: `hsl(${index * 20}, 70%, 50%)`
+                };
+            });
+            resultantVectors = [];
+            tipToTailVectors = [];
+            currentArrowIndex = 0;
+        }
+
+        function drawArrows() {
+            arrows.forEach((arrow, index) => {
+                const x = arrow.x;
+                const arrowY = mirrorY + 50 + index * 0;
+                const endX = x + arrow.magnitude * Math.cos(arrow.angle);
+                const endY = arrowY + arrow.magnitude * Math.sin(arrow.angle);
+
+                // Draw only if the arrow is active or done
+                if (index <= currentArrowIndex || arrow.isDone) {
+                    ctx.strokeStyle = arrow.color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x, arrowY);
+                    ctx.lineTo(endX, endY);
+                    ctx.stroke();
+
+                    // Arrowhead
+                    ctx.beginPath();
+                    ctx.moveTo(endX, endY);
+                    ctx.lineTo(endX - 8 * Math.cos(arrow.angle - Math.PI / 6), endY - 8 * Math.sin(arrow.angle - Math.PI / 6));
+                    ctx.lineTo(endX - 8 * Math.cos(arrow.angle + Math.PI / 6), endY - 8 * Math.sin(arrow.angle + Math.PI / 6));
+                    ctx.closePath();
+                    ctx.fillStyle = arrow.color;
+                    ctx.fill();
+                }
+            });
+        }
+
+        function drawTipToTailAddition() {
+            if (tipToTailVectors.length === 0) return;
+
+            let currentX = resultantStartX;
+            let currentY = resultantStartY;
+
+            // Draw each vector tip-to-tail
+            tipToTailVectors.forEach((vector, index) => {
+                const nextX = currentX + vector.magnitude * Math.cos(vector.angle);
+                const nextY = currentY + vector.magnitude * Math.sin(vector.angle);
+
+                // Draw the vector
+                ctx.strokeStyle = vector.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(currentX, currentY);
+                ctx.lineTo(nextX, nextY);
+                ctx.stroke();
+
+                // Arrowhead
+                ctx.beginPath();
+                ctx.moveTo(nextX, nextY);
+                ctx.lineTo(nextX - 8 * Math.cos(vector.angle - Math.PI / 6), nextY - 8 * Math.sin(vector.angle - Math.PI / 6));
+                ctx.lineTo(nextX - 8 * Math.cos(vector.angle + Math.PI / 6), nextY - 8 * Math.sin(vector.angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fillStyle = vector.color;
+                ctx.fill();
+
+                // Draw a small dot at the tail for clarity
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.arc(currentX, currentY, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                currentX = nextX;
+                currentY = nextY;
+            });
+
+            // Draw the resultant from start to final tip
+            if (resultantVectors.length > 0) {
+                const resultant = resultantVectors[resultantVectors.length - 1];
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(resultantStartX, resultantStartY);
+                ctx.lineTo(
+                    resultantStartX + resultant.magnitude * Math.cos(resultant.angle),
+                    resultantStartY + resultant.magnitude * Math.sin(resultant.angle)
+                );
+                ctx.stroke();
+
+                // Resultant arrowhead
+                ctx.beginPath();
+                ctx.moveTo(
+                    resultantStartX + resultant.magnitude * Math.cos(resultant.angle),
+                    resultantStartY + resultant.magnitude * Math.sin(resultant.angle)
+                );
+                ctx.lineTo(
+                    resultantStartX + resultant.magnitude * Math.cos(resultant.angle) - 10 * Math.cos(resultant.angle - Math.PI / 6),
+                    resultantStartY + resultant.magnitude * Math.sin(resultant.angle) - 10 * Math.sin(resultant.angle - Math.PI / 6)
+                );
+                ctx.lineTo(
+                    resultantStartX + resultant.magnitude * Math.cos(resultant.angle) - 10 * Math.cos(resultant.angle + Math.PI / 6),
+                    resultantStartY + resultant.magnitude * Math.sin(resultant.angle) - 10 * Math.sin(resultant.angle + Math.PI / 6)
+                );
+                ctx.closePath();
+                ctx.fillStyle = 'black';
+                ctx.fill();
+
+                // Label
+                ctx.fillStyle = 'black';
+                ctx.font = '16px Arial';
+                ctx.fillText(
+                    `Resultant: ${resultant.magnitude.toFixed(1)}`,
+                    resultantStartX - 30,
+                    resultantStartY - 20
+                );
+            }
+        }
+
+        function updateArrows() {
+            if (currentArrowIndex >= arrows.length) {
+                isSpinning = false;
+                spinButton.disabled = false;
+                return;
+            }
+
+            const currentArrow = arrows[currentArrowIndex];
+            
+            if (!currentArrow.isDone) {
+                currentArrow.angle += currentArrow.rotationSpeed;
+                
+                // Rotate for ~2 full rotations then stop
+                if (currentArrow.angle >= Math.PI * 4) {
+                    currentArrow.isDone = true;
+                    
+                    // Add to tip-to-tail visualization
+                    tipToTailVectors.push({
+                        magnitude: currentArrow.magnitude,
+                        angle: currentArrow.angle % (Math.PI * 2), // Normalize angle
+                        color: currentArrow.color
+                    });
+
+                    // Calculate new resultant
+                    let sumX = 0, sumY = 0;
+                    tipToTailVectors.forEach(v => {
+                        sumX += v.magnitude * Math.cos(v.angle);
+                        sumY += v.magnitude * Math.sin(v.angle);
+                    });
+                    const resultantMagnitude = Math.sqrt(sumX ** 2 + sumY ** 2);
+                    const resultantAngle = Math.atan2(sumY, sumX);
+                    
+                    resultantVectors.push({
+                        magnitude: resultantMagnitude,
+                        angle: resultantAngle
+                    });
+
+                    currentArrowIndex++;
+                }
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawMirror();
+            drawSourceAndDetector();
+            drawPaths();
+            drawArrows();
+            drawTipToTailAddition();
+            
+            if (isSpinning) {
+                updateArrows();
+            }
+            
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function reset() {
+            isSpinning = false;
+            initializeArrows();
+            spinButton.disabled = false;
+        }
+
+        spinButton.addEventListener('click', () => {
+            if (!isSpinning) {
+                isSpinning = true;
+                spinButton.disabled = true;
+            }
+        });
+
+        resetButton.addEventListener('click', () => {
+            cancelAnimationFrame(animationId);
+            reset();
+            animate();
+        });
+
+        // Initialize and start animation
+        reset();
+        animate();
+    </script>
+</body>
+</html>
